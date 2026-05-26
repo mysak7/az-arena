@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: target-app-sa
+  namespace: target
+  annotations:
+    azure.workload.identity/client-id: "${TARGET_APP_CLIENT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: target-app
+  namespace: target
+  labels:
+    app: target-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: target-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: target-app
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: target-app-sa
+      nodeSelector:
+        "arena/role": "workload"
+      containers:
+        - name: target-app
+          image: acrdevchaosbattle.azurecr.io/target-app:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: COSMOSDB_ENDPOINT
+              value: "${COSMOSDB_ENDPOINT}"
+            - name: COSMOSDB_DATABASE
+              value: "arena"
+            - name: COSMOSDB_CONTAINER
+              value: "battle-log"
+            - name: POSTGRES_HOST
+              value: "postgresql.arena.svc.cluster.local"
+            - name: POSTGRES_DB
+              value: "arena"
+            - name: POSTGRES_USER
+              value: "arena"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "100Mi"    # intentionally low — OOM attack triggers at 200 MB
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: model-weights
+              mountPath: /mnt/weights
+              readOnly: false
+      volumes:
+        - name: model-weights
+          persistentVolumeClaim:
+            claimName: model-weights-pvc
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: target-app-hpa
+  namespace: target
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: target-app
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

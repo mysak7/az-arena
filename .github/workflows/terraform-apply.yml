@@ -1,0 +1,183 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "k8s/**"
+      - ".github/workflows/terraform-apply.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which module to apply (base | cluster | all)"
+        required: false
+        default: "all"
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+env:
+  ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC:        "true"
+  TF_VERSION:          "1.8.5"
+
+jobs:
+  # ── Base module ─────────────────────────────────────────────────────────────
+  base:
+    name: "Terraform · base"
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.target != 'cluster' }}
+    outputs:
+      cosmosdb_endpoint:            ${{ steps.base_out.outputs.cosmosdb_endpoint }}
+      acr_id:                       ${{ steps.base_out.outputs.acr_id }}
+      key_vault_id:                 ${{ steps.base_out.outputs.key_vault_id }}
+      model_weights_container_name: ${{ steps.base_out.outputs.model_weights_container_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (base)
+        working-directory: terraform/base
+        run: terraform init
+
+      - name: Terraform Plan (base)
+        working-directory: terraform/base
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply (base)
+        working-directory: terraform/base
+        run: terraform apply -auto-approve tfplan
+
+      - name: Capture base outputs
+        id: base_out
+        working-directory: terraform/base
+        run: |
+          echo "cosmosdb_endpoint=$(terraform output -raw cosmosdb_endpoint)" >> $GITHUB_OUTPUT
+          echo "acr_id=$(terraform output -raw acr_id)" >> $GITHUB_OUTPUT
+          echo "key_vault_id=$(terraform output -raw key_vault_id)" >> $GITHUB_OUTPUT
+          echo "model_weights_container_name=$(terraform output -raw model_weights_container_name)" >> $GITHUB_OUTPUT
+
+  # ── Cluster module ──────────────────────────────────────────────────────────
+  cluster:
+    name: "Terraform · cluster"
+    runs-on: ubuntu-latest
+    needs: base
+    if: ${{ always() && github.event.inputs.target != 'base' && needs.base.result != 'failure' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (cluster)
+        working-directory: terraform/cluster
+        run: terraform init
+
+      - name: Terraform Plan (cluster)
+        working-directory: terraform/cluster
+        env:
+          TF_VAR_acr_id:      ${{ needs.base.outputs.acr_id }}
+          TF_VAR_key_vault_id: ${{ needs.base.outputs.key_vault_id }}
+          TF_VAR_cosmosdb_endpoint: ${{ needs.base.outputs.cosmosdb_endpoint }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply (cluster)
+        working-directory: terraform/cluster
+        env:
+          TF_VAR_acr_id:      ${{ needs.base.outputs.acr_id }}
+          TF_VAR_key_vault_id: ${{ needs.base.outputs.key_vault_id }}
+          TF_VAR_cosmosdb_endpoint: ${{ needs.base.outputs.cosmosdb_endpoint }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group rg-dev-euc1-chaos-arena \
+            --name aks-dev-euc1-chaos-arena \
+            --overwrite-existing
+
+      - name: Get cluster outputs
+        id: cluster_out
+        working-directory: terraform/cluster
+        run: |
+          echo "target_app_client_id=$(terraform output -raw target_app_client_id)" >> $GITHUB_OUTPUT
+          echo "arena_dashboard_client_id=$(terraform output -raw arena_dashboard_client_id)" >> $GITHUB_OUTPUT
+
+      # ── K8s manifests (inject real values first) ──────────────────────────────
+      - name: Create postgres-secret
+        run: |
+          PG_PASS=$(az keyvault secret show \
+            --vault-name kv-dev-euc1-chaos \
+            --name postgres-password \
+            --query value -o tsv)
+          kubectl create secret generic postgres-secret \
+            --from-literal=password="$PG_PASS" \
+            --namespace arena \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic postgres-secret \
+            --from-literal=password="$PG_PASS" \
+            --namespace target \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create azure-blob-secret for BlobFuse2
+        run: |
+          SA_KEY=$(az storage account keys list \
+            --account-name stdevchaosbattle \
+            --resource-group rg-dev-euc1-chaos-arena \
+            --query '[0].value' -o tsv)
+          kubectl create secret generic azure-blob-secret \
+            --from-literal=azurestorageaccountname=stdevchaosbattle \
+            --from-literal=azurestorageaccountkey="$SA_KEY" \
+            --namespace target \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply K8s manifests
+        env:
+          TARGET_APP_CLIENT_ID:      ${{ steps.cluster_out.outputs.target_app_client_id }}
+          ARENA_DASHBOARD_CLIENT_ID: ${{ steps.cluster_out.outputs.arena_dashboard_client_id }}
+          COSMOSDB_ENDPOINT:         ${{ needs.base.outputs.cosmosdb_endpoint }}
+        run: |
+          # Substitute env vars into manifests and apply
+          find k8s/ -name "*.yaml" | sort | while read f; do
+            envsubst < "$f" | kubectl apply -f -
+          done
+
+      - name: Wait for target-app rollout
+        run: |
+          kubectl rollout status deployment/target-app -n target --timeout=180s
+
+      - name: Get ingress IP
+        run: |
+          echo "⏳ Waiting for LoadBalancer IP..."
+          for i in $(seq 1 20); do
+            IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            if [ -n "$IP" ]; then
+              echo "✅ Ingress IP: $IP"
+              echo "→ Add to arena.mysak.fun A record: $IP"
+              break
+            fi
+            sleep 15
+          done

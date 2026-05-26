@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚔️ Az Chaos Arena</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+  <style>
+    @keyframes pulse-red { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes pulse-blue { 0%,100%{opacity:1} 50%{opacity:.5} }
+    .breaker-pulse { animation: pulse-red 1.5s ease-in-out infinite; }
+    .healer-pulse  { animation: pulse-blue 1.5s ease-in-out infinite; }
+    .terminal { font-family: 'Courier New', monospace; }
+    #battle-body tr { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen p-4">
+
+  <!-- Header -->
+  <div class="max-w-7xl mx-auto">
+    <header class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">
+          ⚔️ <span class="text-red-400">Chaos</span> Arena
+        </h1>
+        <p class="text-gray-400 text-sm mt-1">AKS Battle Ground · Live Feed</p>
+      </div>
+      <!-- Target status badge -->
+      <div id="target-status" class="flex items-center gap-2 bg-gray-800 rounded-lg px-4 py-2">
+        <div id="status-dot" class="w-3 h-3 rounded-full bg-gray-500"></div>
+        <span id="status-text" class="text-sm font-mono">checking…</span>
+      </div>
+    </header>
+
+    <!-- Score cards -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="bg-gray-900 border border-red-900/50 rounded-xl p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-red-500 breaker-pulse"></div>
+          <span class="text-red-400 font-bold text-sm uppercase tracking-wide">Red Team · Breaker</span>
+        </div>
+        <div id="breaker-count" class="text-4xl font-bold text-red-300">—</div>
+        <div class="text-xs text-gray-500 mt-1">attacks launched</div>
+      </div>
+
+      <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center">
+        <div class="text-xs text-gray-400 mb-1">avg MTTR</div>
+        <div id="avg-mttr" class="text-3xl font-mono font-bold text-yellow-300">—</div>
+        <div class="text-xs text-gray-500">seconds</div>
+      </div>
+
+      <div class="bg-gray-900 border border-blue-900/50 rounded-xl p-4 text-right">
+        <div class="flex items-center justify-end gap-2 mb-2">
+          <span class="text-blue-400 font-bold text-sm uppercase tracking-wide">Blue Team · Healer</span>
+          <div class="w-2 h-2 rounded-full bg-blue-500 healer-pulse"></div>
+        </div>
+        <div id="healer-count" class="text-4xl font-bold text-blue-300">—</div>
+        <div class="text-xs text-gray-500 mt-1">incidents resolved</div>
+      </div>
+    </div>
+
+    <!-- Battle Feed -->
+    <div class="bg-gray-900 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+        <h2 class="font-semibold text-sm text-gray-300">⚡ Battle Feed</h2>
+        <div class="flex items-center gap-2">
+          <div id="stream-dot" class="w-2 h-2 rounded-full bg-gray-600"></div>
+          <span id="stream-status" class="text-xs text-gray-500">connecting…</span>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="text-xs text-gray-500 uppercase bg-gray-800/50">
+              <th class="px-4 py-2">Time</th>
+              <th class="px-4 py-2">Agent</th>
+              <th class="px-4 py-2">Scenario</th>
+              <th class="px-4 py-2">Action</th>
+              <th class="px-4 py-2">Result</th>
+              <th class="px-4 py-2">MTTR</th>
+              <th class="px-4 py-2">PR</th>
+            </tr>
+          </thead>
+          <tbody id="battle-body" class="divide-y divide-gray-800">
+            {{ initial_rows | safe }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── SSE Stream ──────────────────────────────────────────────────────────────
+    const dot = document.getElementById('stream-dot');
+    const status = document.getElementById('stream-status');
+    const body = document.getElementById('battle-body');
+
+    function connect() {
+      const es = new EventSource('/stream');
+
+      es.onopen = () => {
+        dot.className = 'w-2 h-2 rounded-full bg-green-500';
+        status.textContent = 'live';
+      };
+
+      es.onmessage = (e) => {
+        if (!e.data.trim()) return;
+        try {
+          const { html } = JSON.parse(e.data);
+          body.insertAdjacentHTML('afterbegin', html);
+          // trim table to 100 rows
+          const rows = body.querySelectorAll('tr');
+          if (rows.length > 100) rows[rows.length - 1].remove();
+          updateScores();
+        } catch {}
+      };
+
+      es.onerror = () => {
+        dot.className = 'w-2 h-2 rounded-full bg-red-500';
+        status.textContent = 'reconnecting…';
+        es.close();
+        setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
+
+    // ── Score counters ──────────────────────────────────────────────────────────
+    function updateScores() {
+      const rows = [...body.querySelectorAll('tr')];
+      let breakers = 0, healers = 0, mttrSum = 0, mttrCount = 0;
+      rows.forEach(row => {
+        const agentCell = row.querySelector('td:nth-child(2)');
+        const mttrCell  = row.querySelector('td:nth-child(6)');
+        if (!agentCell) return;
+        if (agentCell.textContent.trim() === 'breaker') breakers++;
+        else healers++;
+        const mttr = parseFloat(mttrCell?.textContent);
+        if (!isNaN(mttr)) { mttrSum += mttr; mttrCount++; }
+      });
+      document.getElementById('breaker-count').textContent = breakers || '—';
+      document.getElementById('healer-count').textContent  = healers  || '—';
+      document.getElementById('avg-mttr').textContent = mttrCount
+        ? (mttrSum / mttrCount).toFixed(0)
+        : '—';
+    }
+    updateScores();
+
+    // ── Target status poller ────────────────────────────────────────────────────
+    async function pollTargetStatus() {
+      const dot  = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      try {
+        const r = await fetch('/status');
+        const d = await r.json();
+        if (d.status === 'ok') {
+          dot.className  = 'w-3 h-3 rounded-full bg-green-400';
+          text.textContent = `✓ target-app · ${d.mem_rss_mb ?? '?'} MB`;
+        } else {
+          dot.className  = 'w-3 h-3 rounded-full bg-red-400 breaker-pulse';
+          text.textContent = `✗ ${d.status}`;
+        }
+      } catch {
+        dot.className  = 'w-3 h-3 rounded-full bg-red-500 breaker-pulse';
+        text.textContent = '✗ unreachable';
+      }
+    }
+
+    pollTargetStatus();
+    setInterval(pollTargetStatus, 10_000);
+  </script>
+</body>
+</html>

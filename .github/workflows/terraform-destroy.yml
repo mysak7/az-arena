@@ -1,0 +1,102 @@
+name: Terraform Destroy
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "What to destroy (cluster | all)"
+        required: true
+        default: "cluster"
+      confirm:
+        description: "Type DESTROY to confirm"
+        required: true
+
+  # Auto-teardown every day at 20:00 UTC (22:00 CEST) — destroys cluster only
+  schedule:
+    - cron: "0 20 * * *"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC:        "true"
+  TF_VERSION:          "1.8.5"
+
+jobs:
+  guard:
+    name: Confirm destroy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation (manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
+            echo "❌ You must type DESTROY to confirm. Got: ${{ github.event.inputs.confirm }}"
+            exit 1
+          fi
+
+  destroy-cluster:
+    name: "Destroy · cluster"
+    runs-on: ubuntu-latest
+    needs: guard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (cluster)
+        working-directory: terraform/cluster
+        run: terraform init
+
+      - name: Terraform Destroy (cluster)
+        working-directory: terraform/cluster
+        run: terraform destroy -auto-approve
+        continue-on-error: true  # don't fail pipeline if cluster already gone
+
+      - name: Summary
+        run: echo "✅ Cluster destroyed at $(date -u). Base (CosmosDB + Storage) preserved."
+
+  destroy-base:
+    name: "Destroy · base"
+    runs-on: ubuntu-latest
+    needs: destroy-cluster
+    # Only runs for manual 'all' destroy — NOT on schedule
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'all' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (base)
+        working-directory: terraform/base
+        run: terraform init
+
+      - name: Terraform Destroy (base)
+        working-directory: terraform/base
+        run: terraform destroy -auto-approve
+
+      - name: Summary
+        run: echo "💣 Full teardown complete. All resources destroyed."

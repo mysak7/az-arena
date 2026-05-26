@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arena-dashboard-sa
+  namespace: arena
+  annotations:
+    azure.workload.identity/client-id: "${ARENA_DASHBOARD_CLIENT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arena-dashboard
+  namespace: arena
+  labels:
+    app: arena-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: arena-dashboard
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: arena-dashboard
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: arena-dashboard-sa
+      nodeSelector:
+        "arena/role": "workload"
+      containers:
+        - name: arena-dashboard
+          image: acrdevchaosbattle.azurecr.io/arena-dashboard:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: COSMOSDB_ENDPOINT
+              value: "${COSMOSDB_ENDPOINT}"
+            - name: COSMOSDB_DATABASE
+              value: "arena"
+            - name: COSMOSDB_CONTAINER
+              value: "battle-log"
+            - name: TARGET_APP_URL
+              value: "http://target-app.target.svc.cluster.local"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
