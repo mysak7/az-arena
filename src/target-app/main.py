@@ -1,5 +1,5 @@
 """
-target-app — az-chaos-arena Battle Target
+target-app — az-arena Battle Target
 FastAPI app with deliberate fault injection endpoints.
 
 Endpoints:

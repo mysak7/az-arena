@@ -1,5 +1,5 @@
 """
-arena-dashboard — az-chaos-arena Live Battle Dashboard
+arena-dashboard — az-arena Live Battle Dashboard
 FastAPI + HTMX + Server-Sent Events
 
 Routes:

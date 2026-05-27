@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap.sh — One-time setup for az-chaos-arena
+# bootstrap.sh — One-time setup for az-arena
 # Run this ONCE before any Terraform or GitHub Actions.
 # Prerequisites: az CLI logged in, gh CLI authenticated.
 set -euo pipefail
@@ -11,7 +11,7 @@ SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║   az-chaos-arena · Bootstrap                         ║"
+echo "║   az-arena · Bootstrap                               ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo "Subscription: $SUBSCRIPTION_ID"
 echo "Tenant:       $TENANT_ID"
@@ -44,7 +44,7 @@ echo "  ✓ $STORAGE_ACCOUNT / tfstate"
 
 # ── Step 3: GitHub Actions OIDC federation ─────────────────────────────────────
 echo "▶ [3/5] Setting up GitHub Actions OIDC..."
-REPO="mysak7/az-chaos-arena"
+REPO="mysak7/az-arena"
 APP_NAME="sp-chaos-arena-github-actions"
 
 # Create app registration (or reuse if exists)

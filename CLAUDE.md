@@ -1,4 +1,4 @@
-# az-chaos-arena
+# az-arena
 
 **Chaos Engineering Battle Arena on AKS** — infrastructure for fault injection and self-healing demos.
 Live dashboard at `arena.mysak.fun`.
