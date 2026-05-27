@@ -48,6 +48,16 @@ spec:
               value: "battle-log"
             - name: TARGET_APP_URL
               value: "http://target-app.target.svc.cluster.local"
+            - name: PROMETHEUS_URL
+              value: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+            - name: GITHUB_REPO
+              value: "${GITHUB_REPO}"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: token
+                  optional: true
           resources:
             requests:
               cpu: "50m"

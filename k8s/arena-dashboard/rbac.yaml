@@ -1,0 +1,28 @@
+---
+# ClusterRole: arena-dashboard can read pods and events cluster-wide
+# Needed for /api/incident-snapshot endpoint (monitoring target, arena, keda namespaces)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arena-dashboard-reader
+  labels:
+    app: arena-dashboard
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arena-dashboard-reader
+  labels:
+    app: arena-dashboard
+subjects:
+  - kind: ServiceAccount
+    name: arena-dashboard-sa
+    namespace: arena
+roleRef:
+  kind: ClusterRole
+  name: arena-dashboard-reader
+  apiGroup: rbac.authorization.k8s.io

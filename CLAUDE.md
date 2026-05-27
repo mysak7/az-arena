@@ -210,6 +210,66 @@ gh workflow run terraform-destroy.yml -f target=cluster -f confirm=DESTROY
 
 ---
 
+## Monitoring & Incident Ticketing
+
+**Design decisions (grilled 2026-05-27):**
+
+| Decision | Choice | Důvod |
+|----------|--------|-------|
+| Healer typ | AI agent (Claude/LLM) | Autonomní — čte issue, fixuje, zavírá |
+| Ticketing | GitHub Issues | Jednoduchá integrace, tracking v repo |
+| Issue trigger | Breaker spouští scénář | Proaktivní, přesný scenario typ |
+| Issue creator | Breaker volá GitHub API přímo | PAT v env Breakera |
+| Issue obsah | Structured Markdown template | Healer snadno parsuje sekce |
+| Data collector | `GET /api/incident-snapshot` | Dashboard sbírá pod stav + metriky |
+| Issue lifecycle | Healer autonomně zavírá | Plně autonomní flow |
+| Dashboard | Live incident panel | GitHub API polling, label `incident` |
+
+### Flow
+
+```
+Breaker
+  1. POST /leak (nebo jiný fault endpoint)
+  2. GET arena.mysak.fun/api/incident-snapshot  → cluster state JSON
+  3. GitHub API → vytvoří Issue (label: incident + fault-001..006)
+       body: Markdown template (scenario / pod state / metrics / fix hint)
+
+arena-dashboard
+  GET /api/incident-snapshot  ← Kubernetes client (pods, events) + Prometheus
+  GET /incidents-panel        ← HTML fragment se živými incidenty (HTMX polling 30s)
+
+Healer (AI agent, external)
+  1. Čte GitHub Issues (label: incident)
+  2. Diagnostikuje + fixuje
+  3. GitHub API → close issue
+```
+
+### Co je v tomto repozitáři
+
+| Soubor | Co dělá |
+|--------|---------|
+| `src/arena-dashboard/main.py` | `/api/incident-snapshot` + `/incidents-panel` endpoints |
+| `k8s/arena-dashboard/rbac.yaml` | ClusterRole pro čtení pods/events |
+| `k8s/arena-dashboard/deployment.yaml` | Přidány env: `PROMETHEUS_URL`, `GITHUB_TOKEN`, `GITHUB_REPO` |
+| `docs/incident-issue-template.md` | Markdown template pro Breakera |
+| `scripts/create-github-labels.sh` | Vytvoří GitHub labels (incident, fault-001..006) |
+
+### Env vars arena-dashboard
+
+| Var | Hodnota |
+|-----|---------|
+| `PROMETHEUS_URL` | `http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090` |
+| `GITHUB_TOKEN` | PAT s `issues:read` (K8s Secret `github-token`) |
+| `GITHUB_REPO` | `mi/az-arena` (nebo správný org/repo) |
+
+### GitHub labels
+
+- `incident` — aktivní incident (otevřené issue = live fault)
+- `fault-001` … `fault-006` — konkrétní fault typ
+- `scenario-oom`, `scenario-db-exhaust`, … — scenario tagy
+
+---
+
 ## Code Style
 
 - Python 3.12, async-first (`asyncio` + `httpx`)
