@@ -141,6 +141,17 @@ jobs:
             --namespace target \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create keda-pg-secret (KEDA PostgreSQL trigger auth)
+        run: |
+          PG_PASS=$(az keyvault secret show \
+            --vault-name kv-dev-euc1-chaos \
+            --name postgres-password \
+            --query value -o tsv)
+          kubectl create secret generic keda-pg-secret \
+            --from-literal=connection="host=postgresql.arena.svc.cluster.local user=arena password=${PG_PASS} dbname=arena sslmode=disable" \
+            --namespace arena \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create azure-blob-secret for BlobFuse2
         run: |
           SA_KEY=$(az storage account keys list \
@@ -167,6 +178,10 @@ jobs:
       - name: Wait for target-app rollout
         run: |
           kubectl rollout status deployment/target-app -n target --timeout=180s
+
+      - name: Wait for arena-dashboard rollout
+        run: |
+          kubectl rollout status deployment/arena-dashboard -n arena --timeout=180s
 
       - name: Get ingress IP
         run: |

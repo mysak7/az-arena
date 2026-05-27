@@ -1,0 +1,17 @@
+# ServiceMonitor — tells Prometheus to scrape target-app /metrics
+# Required for KEDA target-app-scaler (Prometheus trigger) to have data.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: target-app
+  namespace: target
+  labels:
+    release: kube-prometheus-stack   # must match Prometheus serviceMonitorSelector
+spec:
+  selector:
+    matchLabels:
+      app: target-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -1,0 +1,76 @@
+# ── KEDA ScaledObjects — az-arena ─────────────────────────────────────────────
+#
+# ScaledObject 1: target-app → Prometheus scaler (HTTP RPS)
+#   Scales target-app based on request rate scraped from kube-prometheus-stack.
+#   Chaos scenario: Breaker floods with HTTP requests → KEDA scales out to 8 replicas.
+#
+# ScaledObject 2: queue-worker → PostgreSQL scaler (queue depth)
+#   Scales queue-worker based on pending jobs in arena_jobs table.
+#   # FAULT_004: KEDA directly queries production DB — if /lock-db exhausts
+#   max_connections=50, KEDA trigger query also fails → autoscaler deadlock.
+#   Fix: isolate KEDA via PgBouncer with dedicated keda user (max 2 connections).
+
+# ── TriggerAuthentication: PostgreSQL connection for queue-worker ──────────────
+# Secret keda-pg-secret is created by GitHub Actions (terraform-apply.yml)
+# It holds: host=postgresql.arena.svc.cluster.local user=arena password=... dbname=arena
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: pg-trigger-auth
+  namespace: arena
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: keda-pg-secret
+      key: connection
+---
+# ── ScaledObject: queue-worker (PostgreSQL scaler) ────────────────────────────
+# FAULT_004: Queries same DB that lock-db attack targets → autoscaler deadlock
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: queue-worker-scaler
+  namespace: arena
+  annotations:
+    fault: FAULT_004
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: queue-worker
+  minReplicaCount: 0      # scale-to-zero when queue empty
+  maxReplicaCount: 5
+  cooldownPeriod: 30      # seconds to wait after last scale event before scaling down
+  pollingInterval: 10     # how often KEDA queries the trigger
+  triggers:
+    - type: postgresql
+      metadata:
+        # FAULT_004: same DB as target-app — no isolation from lock-db attack
+        targetQueryValue: "5"        # 1 pod per 5 pending jobs
+        activationTargetQueryValue: "1"  # start first pod when ≥1 job pending
+        query: "SELECT COUNT(*) FROM arena_jobs WHERE status = 'pending'"
+      authenticationRef:
+        name: pg-trigger-auth
+---
+# ── ScaledObject: target-app (Prometheus scaler) ──────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: target-app-scaler
+  namespace: target
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: target-app
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  cooldownPeriod: 60
+  pollingInterval: 15
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        # Rate of requests/sec across all target-app pods
+        query: sum(rate(target_requests_total[1m])) or vector(0)
+        threshold: "50"   # scale out when avg RPS per pod > 50

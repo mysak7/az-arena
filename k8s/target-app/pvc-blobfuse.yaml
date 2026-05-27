@@ -1,3 +1,7 @@
+# FAULT_005: BlobFuse2 PV without lease break timeout or --use-adls.
+# If VMSS node dies with this volume mounted, Azure Storage holds a stale lease.
+# New pod gets stuck in ContainerCreating: "failed to acquire blob lease"
+# Fix: add mountOptions: [--lease-duration=15, --cancel-list-on-mount-failure=true]
 apiVersion: v1
 kind: PersistentVolume
 metadata:

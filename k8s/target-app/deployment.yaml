@@ -63,7 +63,7 @@ spec:
               memory: "64Mi"
             limits:
               cpu: "500m"
-              memory: "100Mi"    # intentionally low — OOM attack triggers at 200 MB
+              memory: "100Mi"    # FAULT_001: intentionally low (100Mi) — /leak allocates 200MB → OOMKilled (Exit 137)
           readinessProbe:
             httpGet:
               path: /health
@@ -84,6 +84,9 @@ spec:
         - name: model-weights
           persistentVolumeClaim:
             claimName: model-weights-pvc
+---
+# FAULT_006: no PodDisruptionBudget — simultaneous eviction possible during kubectl drain / node pool upgrade
+# Fix: add PodDisruptionBudget with minAvailable: 1 (see FAULTS.md)
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [target-app, arena-dashboard]
+        app: [target-app, arena-dashboard, queue-worker]
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +62,9 @@ jobs:
           - app: arena-dashboard
             namespace: arena
             deploy: arena-dashboard
+          - app: queue-worker
+            namespace: arena
+            deploy: queue-worker
     continue-on-error: true  # cluster might be down (auto-teardown)
 
     steps:

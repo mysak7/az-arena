@@ -154,6 +154,35 @@ async def lock_db(count: int = 50):
     }
 
 
+@app.post("/flood-queue")
+async def flood_queue(count: int = 20):
+    """
+    Insert `count` pending jobs into arena_jobs.
+    Triggers KEDA queue-worker ScaledObject to scale out.
+    Combine with /lock-db to demonstrate FAULT_004 (Autoscaler Deadlock).
+    """
+    request_counter.labels(endpoint="/flood-queue").inc()
+    if count > 500:
+        raise HTTPException(status_code=400, detail="count must be ≤ 500")
+
+    log.warning(f"🟡 FLOOD: Inserting {count} pending jobs into arena_jobs")
+    dsn = await _pg_dsn()
+    conn = await asyncpg.connect(dsn=dsn)
+    try:
+        await conn.executemany(
+            "INSERT INTO arena_jobs (status, payload) VALUES ('pending', $1::jsonb)",
+            [(f'{{"source": "flood-queue", "index": {i}}}',) for i in range(count)],
+        )
+    finally:
+        await conn.close()
+
+    return {
+        "action": "flood-queue",
+        "jobs_inserted": count,
+        "tip": "Watch KEDA scale queue-worker: kubectl get pods -n arena -w",
+    }
+
+
 @app.post("/reset")
 async def reset():
     """

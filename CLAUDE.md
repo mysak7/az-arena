@@ -1,7 +1,10 @@
 # az-arena
 
-**Chaos Engineering Battle Arena on AKS** — infrastructure for fault injection and self-healing demos.
-Live dashboard at `arena.mysak.fun`.
+**Chaos Engineering Battle Arena on AKS** — tréninkový prostor pro chaos engineering a SRE recovery scénáře.
+Live dashboard na `arena.mysak.fun`.
+
+Infrastruktura je záměrně reálná, ale obsahuje **6 záměrných slabin** (viz [`FAULTS.md`](FAULTS.md)).
+Cíl: naučit se je najít, pochopit root cause a opravit — pod tlakem živého útoku.
 
 ---
 
@@ -16,15 +19,26 @@ GitHub Actions
 AKS Cluster (aks-dev-euc1-chaos-arena, eastus)
   ├── namespace: target
   │   └── target-app (FastAPI) ← fault injection target
-  │       ├── POST /leak        → 200 MB alloc → OOMKilled
-  │       ├── POST /lock-db     → 50 idle PG connections → exhaustion
-  │       ├── POST /reset       → emergency release
+  │       ├── POST /leak           → 200 MB alloc → OOMKilled
+  │       ├── POST /lock-db        → 50 idle PG connections → exhaustion
+  │       ├── POST /flood-queue    → N pending jobs → triggers KEDA queue-worker scale
+  │       ├── POST /reset          → emergency release
   │       └── GET  /health, /metrics
   │       └── BlobFuse2 mount (/mnt/weights) ← dangling lease attack target
   │
   ├── namespace: arena
   │   ├── arena-dashboard (FastAPI + HTMX + SSE) → arena.mysak.fun
-  │   └── postgresql (StatefulSet, postgres:16-alpine)
+  │   ├── postgresql (StatefulSet, postgres:16-alpine, max_connections=50)
+  │   └── queue-worker (FastAPI + asyncpg) ← scales via KEDA (0–5 replicas)
+  │
+  ├── namespace: keda
+  │   └── KEDA operator (v2.14) — manages ScaledObjects
+  │       ├── queue-worker-scaler  → PostgreSQL trigger (arena_jobs pending count)
+  │       └── target-app-scaler   → Prometheus trigger (HTTP RPS)
+  │
+  ├── namespace: monitoring
+  │   ├── Prometheus (kube-prometheus-stack)
+  │   └── Grafana (admin: arena-grafana)
   │
   └── namespace: ingress-nginx (nginx-ingress)
 
@@ -37,6 +51,26 @@ Azure (permanent, survives cluster teardown):
 
 ---
 
+## Fault Matrix
+
+6 záměrných slabin — každá má `FAULT_XXX` tag v kódu. Viz **[FAULTS.md](FAULTS.md)**.
+
+```bash
+# Rychlé vyhledání tagů:
+grep -r "FAULT_" k8s/ src/ --include="*.yaml" --include="*.py"
+```
+
+| ID | Název | Obtížnost |
+|----|-------|-----------|
+| FAULT_001 | OOM Kill (memory limit 100Mi) | ⭐ easy |
+| FAULT_002 | DB Connection Exhaustion (no PgBouncer) | ⭐⭐ medium |
+| FAULT_003 | Network Blackout (deny-all NetworkPolicy) | ⭐ easy |
+| FAULT_004 | Autoscaler Deadlock (KEDA → same DB as attack) | ⭐⭐⭐ hard |
+| FAULT_005 | BlobFuse2 Dangling Lease (no lease timeout) | ⭐⭐ medium |
+| FAULT_006 | No PodDisruptionBudget (eviction during drain) | ⭐⭐ medium |
+
+---
+
 ## Attack Matrix
 
 | Scenario | How | K8s effect |
@@ -46,6 +80,8 @@ Azure (permanent, survives cluster teardown):
 | `SCENARIO_NETWORK` | Apply NetworkPolicy blocking ingress | 503 from nginx |
 | `SCENARIO_BLOB_LEASE` | Delete VMSS node with BlobFuse2 mounted | ContainerCreating stuck |
 | `SCENARIO_SCALE_ZERO` | `kubectl scale deploy/target-app --replicas=0` | App down |
+| `SCENARIO_QUEUE_FLOOD` | `POST /flood-queue?count=50` | KEDA scales queue-worker 0→5 |
+| `SCENARIO_AUTOSCALER_DEADLOCK` | `POST /lock-db` + `POST /flood-queue` | KEDA freeze + queue pile-up |
 
 Agents (Breaker + Healer) live **outside this repo** — they call this cluster's APIs remotely.
 
@@ -72,12 +108,12 @@ Node pools:
 
 ## Workload Identity
 
-Both K8s ServiceAccounts are federated with their Azure Managed Identity:
-
 | SA | Namespace | UAMI | Azure RBAC |
 |----|-----------|------|------------|
 | `target-app-sa` | `target` | `id-dev-target-app` | Storage Blob Data Contributor |
 | `arena-dashboard-sa` | `arena` | `id-dev-arena-dashboard` | Cosmos DB Built-in Data Contributor |
+
+`queue-worker-sa` — no Azure RBAC needed (only accesses in-cluster PostgreSQL).
 
 ---
 
@@ -110,6 +146,18 @@ gh workflow run terraform-apply.yml
 kubectl logs -f -n arena deploy/arena-dashboard
 kubectl logs -f -n target deploy/target-app
 
+# Watch KEDA scale queue-worker
+kubectl get pods -n arena -w
+
+# Trigger chaos scenarios
+curl -X POST https://arena.mysak.fun/leak          # FAULT_001: OOM
+curl -X POST https://arena.mysak.fun/lock-db       # FAULT_002: DB exhaustion
+curl -X POST "https://arena.mysak.fun/flood-queue?count=50"  # SCENARIO_QUEUE_FLOOD
+curl -X POST https://arena.mysak.fun/reset         # emergency reset
+
+# Check KEDA logs (FAULT_004 visible here during lock-db attack)
+kubectl logs -n keda deploy/keda-operator | grep -E "FAULT|deadlock|deadline exceeded"
+
 # Open dashboard
 open https://arena.mysak.fun
 
@@ -124,7 +172,7 @@ gh workflow run terraform-destroy.yml -f target=cluster -f confirm=DESTROY
 
 - Backend: Azure Blob Storage (`stdevchaosbattle` / `tfstate`)
 - `base.tfstate` — CosmosDB, Storage, Key Vault, ACR
-- `cluster.tfstate` — AKS, node pools, Workload Identity, nginx-ingress
+- `cluster.tfstate` — AKS, node pools, Workload Identity, nginx-ingress, KEDA, Prometheus
 
 `base/` is permanent. `cluster/` is ephemeral (destroyed nightly).
 
@@ -149,6 +197,16 @@ gh workflow run terraform-destroy.yml -f target=cluster -f confirm=DESTROY
 | `COSMOSDB_CONTAINER` | `battle-log` |
 | `TARGET_APP_URL` | `http://target-app.target.svc.cluster.local` |
 | `POLL_INTERVAL_SECONDS` | `3` |
+
+### queue-worker
+| Var | Value |
+|-----|-------|
+| `POSTGRES_HOST` | `postgresql.arena.svc.cluster.local` |
+| `POSTGRES_DB` | `arena` |
+| `POSTGRES_USER` | `arena` |
+| `POSTGRES_PASSWORD` | from K8s Secret `postgres-secret` |
+| `WORKER_BATCH_SIZE` | `3` |
+| `POLL_INTERVAL_SECONDS` | `2` |
 
 ---
 

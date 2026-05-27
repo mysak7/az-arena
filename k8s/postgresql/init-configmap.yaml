@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-init
+  namespace: arena
+data:
+  01-arena-jobs.sql: |
+    -- arena_jobs: job queue for queue-worker (KEDA PostgreSQL scaler target)
+    CREATE TABLE IF NOT EXISTS arena_jobs (
+        id           SERIAL PRIMARY KEY,
+        status       VARCHAR(20)  NOT NULL DEFAULT 'pending',
+        payload      JSONB        NOT NULL DEFAULT '{}',
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        processed_at TIMESTAMPTZ
+    );
+
+    -- Partial index on pending jobs — KEDA trigger query scans this
+    CREATE INDEX IF NOT EXISTS idx_arena_jobs_pending
+        ON arena_jobs(created_at ASC)
+        WHERE status = 'pending';
+
+    -- Composite index for queue-worker's FOR UPDATE SKIP LOCKED poll
+    CREATE INDEX IF NOT EXISTS idx_arena_jobs_status_created
+        ON arena_jobs(status, created_at ASC);

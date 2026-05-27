@@ -33,6 +33,9 @@ spec:
       containers:
         - name: postgresql
           image: postgres:16-alpine
+          # FAULT_002: max_connections=50 with no PgBouncer — /lock-db opens 50 idle connections → exhaustion
+          # Fix: add PgBouncer sidecar (pool_mode=transaction, max_client_conn=200, default_pool_size=10)
+          args: ["-c", "max_connections=50"]
           ports:
             - containerPort: 5432
           env:
@@ -68,6 +71,12 @@ spec:
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgresql-init
   volumeClaimTemplates:
     - metadata:
         name: pgdata
