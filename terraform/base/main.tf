@@ -9,7 +9,7 @@ resource "azurerm_resource_group" "main" {
 
 # ── Storage Account (Terraform state + BlobFuse2 target) ──────────────────────
 resource "azurerm_storage_account" "main" {
-  name                     = "stdevchaosbattle"
+  name                     = "stdevarena"
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
@@ -47,7 +47,7 @@ resource "azurerm_storage_blob" "dummy_weights" {
 
 # ── Container Registry ─────────────────────────────────────────────────────────
 resource "azurerm_container_registry" "main" {
-  name                = "acrdevchaosbattle"
+  name                = "acrdevarena"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   sku                 = "Basic"
@@ -57,7 +57,7 @@ resource "azurerm_container_registry" "main" {
 
 # ── Key Vault ──────────────────────────────────────────────────────────────────
 resource "azurerm_key_vault" "main" {
-  name                       = "kv-dev-euc1-chaos"
+  name                       = "kv-dev-euc1-arena"
   resource_group_name        = azurerm_resource_group.main.name
   location                   = azurerm_resource_group.main.location
   tenant_id                  = data.azurerm_client_config.current.tenant_id
@@ -91,7 +91,7 @@ resource "azurerm_key_vault_secret" "postgres_password" {
 
 # ── CosmosDB (Serverless NoSQL) ────────────────────────────────────────────────
 resource "azurerm_cosmosdb_account" "main" {
-  name                = "cosmos-dev-euc1-chaos-arena"
+  name                = "cosmos-dev-euc1-arena"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   offer_type          = "Standard"

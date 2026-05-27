@@ -14,7 +14,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   name                = "aks-dev-euc1-${var.project}"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
-  dns_prefix          = "chaos-arena"
+  dns_prefix          = "arena"
 
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
@@ -106,10 +106,10 @@ resource "azurerm_role_assignment" "target_app_blob" {
 resource "azurerm_cosmosdb_sql_role_assignment" "dashboard_reader" {
   count               = var.cosmosdb_endpoint != "" ? 1 : 0
   resource_group_name = var.resource_group_name
-  account_name        = "cosmos-dev-euc1-chaos-arena"
-  role_definition_id  = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-chaos-arena/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  account_name        = "cosmos-dev-euc1-arena"
+  role_definition_id  = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-arena/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
   principal_id        = azurerm_user_assigned_identity.arena_dashboard.principal_id
-  scope               = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-chaos-arena"
+  scope               = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-arena"
 }
 
 # ── nginx-ingress (via Helm) ──────────────────────────────────────────────────

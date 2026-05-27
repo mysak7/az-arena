@@ -26,7 +26,7 @@ spec:
         "arena/role": "workload"
       containers:
         - name: queue-worker
-          image: acrdevchaosbattle.azurecr.io/queue-worker:latest
+          image: acrdevarena.azurecr.io/queue-worker:latest
           ports:
             - name: metrics
               containerPort: 8001

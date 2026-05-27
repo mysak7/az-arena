@@ -13,7 +13,7 @@ variable "environment" {
 variable "project" {
   description = "Project name"
   type        = string
-  default     = "chaos-arena"
+  default     = "arena"
 }
 
 variable "cosmosdb_database_name" {

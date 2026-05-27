@@ -36,7 +36,7 @@ spec:
         "arena/role": "workload"
       containers:
         - name: arena-dashboard
-          image: acrdevchaosbattle.azurecr.io/arena-dashboard:latest
+          image: acrdevarena.azurecr.io/arena-dashboard:latest
           ports:
             - containerPort: 8080
           env:

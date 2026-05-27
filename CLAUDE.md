@@ -16,7 +16,7 @@ GitHub Actions
   ├── terraform-destroy.yml  → teardown (daily 20:00 UTC auto + manual)
   └── build-push.yml         → builds + pushes Docker images to ACR
 
-AKS Cluster (aks-dev-euc1-chaos-arena, eastus)
+AKS Cluster (aks-dev-euc1-arena, eastus)
   ├── namespace: target
   │   └── target-app (FastAPI) ← fault injection target
   │       ├── POST /leak           → 200 MB alloc → OOMKilled
@@ -91,12 +91,12 @@ Agents (Breaker + Healer) live **outside this repo** — they call this cluster'
 
 | Resource | Name | Notes |
 |----------|------|-------|
-| Resource Group | `rg-dev-euc1-chaos-arena` | All resources |
-| AKS | `aks-dev-euc1-chaos-arena` | Azure CNI Overlay, NetworkPolicy |
-| CosmosDB | `cosmos-dev-euc1-chaos-arena` | Serverless, battle-log |
-| Storage Account | `stdevchaosbattle` | TF state + BlobFuse2 |
-| ACR | `acrdevchaosbattle` | Images |
-| Key Vault | `kv-dev-euc1-chaos` | Secrets |
+| Resource Group | `rg-dev-euc1-arena` | All resources |
+| AKS | `aks-dev-euc1-arena` | Azure CNI Overlay, NetworkPolicy |
+| CosmosDB | `cosmos-dev-euc1-arena` | Serverless, battle-log |
+| Storage Account | `stdevarena` | TF state + BlobFuse2 |
+| ACR | `acrdevarena` | Images |
+| Key Vault | `kv-dev-euc1-arena` | Secrets |
 | UAMI target-app | `id-dev-target-app` | Storage Blob Data Contributor |
 | UAMI dashboard | `id-dev-arena-dashboard` | CosmosDB Contributor |
 
@@ -170,7 +170,7 @@ gh workflow run terraform-destroy.yml -f target=cluster -f confirm=DESTROY
 
 ## Terraform State
 
-- Backend: Azure Blob Storage (`stdevchaosbattle` / `tfstate`)
+- Backend: Azure Blob Storage (`stdevarena` / `tfstate`)
 - `base.tfstate` — CosmosDB, Storage, Key Vault, ACR
 - `cluster.tfstate` — AKS, node pools, Workload Identity, nginx-ingress, KEDA, Prometheus
 

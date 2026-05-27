@@ -10,13 +10,13 @@ variable "environment" {
 
 variable "project" {
   type    = string
-  default = "chaos-arena"
+  default = "arena"
 }
 
 # Pulled from base remote state — can override for local testing
 variable "resource_group_name" {
   type    = string
-  default = "rg-dev-euc1-chaos-arena"
+  default = "rg-dev-euc1-arena"
 }
 
 variable "acr_id" {
@@ -33,7 +33,7 @@ variable "key_vault_id" {
 
 variable "storage_account_name" {
   type    = string
-  default = "stdevchaosbattle"
+  default = "stdevarena"
 }
 
 variable "cosmosdb_endpoint" {

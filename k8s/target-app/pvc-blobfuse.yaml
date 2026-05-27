@@ -17,8 +17,8 @@ spec:
     readOnly: false
     volumeHandle: model-weights-unique-id
     volumeAttributes:
-      resourceGroup: "rg-dev-euc1-chaos-arena"
-      storageAccount: "stdevchaosbattle"
+      resourceGroup: "rg-dev-euc1-arena"
+      storageAccount: "stdevarena"
       containerName: "model-weights"
       protocol: fuse2
     nodeStageSecretRef:

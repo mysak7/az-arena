@@ -114,8 +114,8 @@ jobs:
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group rg-dev-euc1-chaos-arena \
-            --name aks-dev-euc1-chaos-arena \
+            --resource-group rg-dev-euc1-arena \
+            --name aks-dev-euc1-arena \
             --overwrite-existing
 
       - name: Get cluster outputs
@@ -129,7 +129,7 @@ jobs:
       - name: Create postgres-secret
         run: |
           PG_PASS=$(az keyvault secret show \
-            --vault-name kv-dev-euc1-chaos \
+            --vault-name kv-dev-euc1-arena \
             --name postgres-password \
             --query value -o tsv)
           kubectl create secret generic postgres-secret \
@@ -144,7 +144,7 @@ jobs:
       - name: Create keda-pg-secret (KEDA PostgreSQL trigger auth)
         run: |
           PG_PASS=$(az keyvault secret show \
-            --vault-name kv-dev-euc1-chaos \
+            --vault-name kv-dev-euc1-arena \
             --name postgres-password \
             --query value -o tsv)
           kubectl create secret generic keda-pg-secret \
@@ -155,11 +155,11 @@ jobs:
       - name: Create azure-blob-secret for BlobFuse2
         run: |
           SA_KEY=$(az storage account keys list \
-            --account-name stdevchaosbattle \
-            --resource-group rg-dev-euc1-chaos-arena \
+            --account-name stdevarena \
+            --resource-group rg-dev-euc1-arena \
             --query '[0].value' -o tsv)
           kubectl create secret generic azure-blob-secret \
-            --from-literal=azurestorageaccountname=stdevchaosbattle \
+            --from-literal=azurestorageaccountname=stdevarena \
             --from-literal=azurestorageaccountkey="$SA_KEY" \
             --namespace target \
             --dry-run=client -o yaml | kubectl apply -f -

@@ -17,8 +17,8 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = "rg-dev-euc1-chaos-arena"
-    storage_account_name = "stdevchaosbattle"
+    resource_group_name  = "rg-dev-euc1-arena"
+    storage_account_name = "stdevarena"
     container_name       = "tfstate"
     key                  = "cluster.tfstate"
   }

@@ -36,7 +36,7 @@ spec:
         "arena/role": "workload"
       containers:
         - name: target-app
-          image: acrdevchaosbattle.azurecr.io/target-app:latest
+          image: acrdevarena.azurecr.io/target-app:latest
           ports:
             - containerPort: 8000
           env:

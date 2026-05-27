@@ -30,7 +30,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR login
-        run: az acr login --name acrdevchaosbattle
+        run: az acr login --name acrdevarena
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,8 +43,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            acrdevchaosbattle.azurecr.io/${{ matrix.app }}:latest
-            acrdevchaosbattle.azurecr.io/${{ matrix.app }}:${{ github.sha }}
+            acrdevarena.azurecr.io/${{ matrix.app }}:latest
+            acrdevarena.azurecr.io/${{ matrix.app }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -77,8 +77,8 @@ jobs:
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group rg-dev-euc1-chaos-arena \
-            --name aks-dev-euc1-chaos-arena \
+            --resource-group rg-dev-euc1-arena \
+            --name aks-dev-euc1-arena \
             --overwrite-existing 2>/dev/null || true
 
       - name: Rollout restart

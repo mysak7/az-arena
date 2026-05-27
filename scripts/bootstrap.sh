@@ -4,8 +4,8 @@
 # Prerequisites: az CLI logged in, gh CLI authenticated.
 set -euo pipefail
 
-RESOURCE_GROUP="rg-dev-euc1-chaos-arena"
-STORAGE_ACCOUNT="stdevchaosbattle"
+RESOURCE_GROUP="rg-dev-euc1-arena"
+STORAGE_ACCOUNT="stdevarena"
 LOCATION="eastus"
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
@@ -45,7 +45,7 @@ echo "  ✓ $STORAGE_ACCOUNT / tfstate"
 # ── Step 3: GitHub Actions OIDC federation ─────────────────────────────────────
 echo "▶ [3/5] Setting up GitHub Actions OIDC..."
 REPO="mysak7/az-arena"
-APP_NAME="sp-chaos-arena-github-actions"
+APP_NAME="sp-arena-github-actions"
 
 # Create app registration (or reuse if exists)
 APP_ID=$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv 2>/dev/null || true)
