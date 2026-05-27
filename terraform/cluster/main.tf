@@ -22,7 +22,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # System node pool — lean, always on
   default_node_pool {
     name                 = "system"
-    vm_size              = "Standard_B2s"
+    vm_size              = "Standard_D2s_v4"   # B2s not available in this subscription
     node_count           = 2
     os_disk_size_gb      = 30
     type                 = "VirtualMachineScaleSets"
@@ -69,7 +69,7 @@ resource "azurerm_kubernetes_cluster" "main" {
 resource "azurerm_kubernetes_cluster_node_pool" "user" {
   name                  = "user"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
-  vm_size               = "Standard_B4ms"
+  vm_size               = "Standard_D4s_v4"   # B4ms not available in this subscription
   node_count            = 1
   min_count             = 1
   max_count             = 3
@@ -109,7 +109,7 @@ resource "azurerm_cosmosdb_sql_role_assignment" "dashboard_reader" {
   account_name        = "cosmos-dev-euc1-chaos-arena"
   role_definition_id  = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-chaos-arena/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
   principal_id        = azurerm_user_assigned_identity.arena_dashboard.principal_id
-  scope               = "/"
+  scope               = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-dev-euc1-chaos-arena"
 }
 
 # ── nginx-ingress (via Helm) ──────────────────────────────────────────────────
